@@ -7,3 +7,4 @@ Kaggle等のオープンデータを使用して、擬似的なビジネス課�
 
 [AdaBoostによるモデル精度向上](http://nbviewer.jupyter.org/github/snufkin92/data_science_sample_work/blob/dev/w_01/modeling_process_vol2.ipynb)
 
+## スマートメータによる在宅時間の予測（宅配会社のラストワンマイル問題）
