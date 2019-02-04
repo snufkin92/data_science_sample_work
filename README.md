@@ -11,3 +11,7 @@ Kaggle等のオープンデータを使用して、擬似的なビジネス課�
 [ペルソナ作成による宅配パターンの提案](http://nbviewer.jupyter.org/github/snufkin92/data_science_sample_work/blob/dev/w_02/Last_One_Mile.ipynb)
 
 [【参考】シルエットプロットの見方とX-Means](http://nbviewer.jupyter.org/github/snufkin92/data_science_sample_work/blob/dev/w_02/silhouette_analysis.ipynb)
+
+
+## 最尤推定
+[最尤推定による確率分布のパラメータ推定](https://nbviewer.jupyter.org/github/snufkin92/data_science_sample_work/blob/dev/s_01/maximum_likelihood_estimation.nb.html)
