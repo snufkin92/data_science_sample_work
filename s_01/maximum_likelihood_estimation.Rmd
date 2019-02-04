@@ -1,0 +1,292 @@
+---
+title: "最尤推定"
+output: html_notebook
+---
+
+#### １.ポアソン分布の最尤推定
+ある工場で1日に発生する不良品の数を15日間調べたところ、次のような結果が得られた。
+```{r}
+#不良品数
+defective_product_num <- c(1, 4, 3, 3, 1, 0, 2, 2, 1, 2, 1, 1, 1, 3, 1)
+```
+
+```{r echo = FALSE}
+df <- data.frame(t(defective_product_num))
+library(DT)
+DT::datatable(
+  df,
+  rownames = "Number of defective items", # 不良品数
+  colnames = c("day", 1:15), # 日
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+    )
+)
+```
+***
+##### (1) 1日に発生する不良品の数がポアソン分布に従うとき、パラメータλの最尤推定量を求めなさい。
+
+> 最尤推定とは  
+サンプル結果から確率分布関数の尤もらしいパラメータを点推定する。確率が幾つの場合、試行結果が尤もらしくなるかとも言える。  
+例）コインを10回投げたら表が8回でた。  コインの表の出る確率は？  
+コインの表が出る確率は二項分布  
+$$\begin{eqnarray*}
+  P(X=k)=&& {}_n C _kP^{k}(1-P)^{n-k}
+\end{eqnarray*}$$
+で表せる為、n=10、k=8の場合、
+$$\begin{eqnarray*}
+  P(X=8)=&& {}_{10} C _8P^{8}(1-P)^{10-8}=&& {}_{10} C _8P^{8}(1-P)^{2}
+\end{eqnarray*}$$
+Pを色々変えるとP=0.8の場合が最大となり、尤もらしい。  
+母集団の確率密度関数 f(x) がパラメータθ を持つ時、尤度関数は
+$$\begin{eqnarray*}
+  L(θ;x)
+\end{eqnarray*}$$
+と書く。二項分布場合、尤度関数は
+$$\begin{eqnarray*}
+  L(θ;x)＝&& {}_n C _xθ^{x}(1-θ)^{n-x}
+\end{eqnarray*}$$
+となる。（対数をとって微分。対数関数は単調増加関数である事を利用して解く）
+
+
+今回は、ポアソン分布に従う為、  
+__ポアソン分布__
+$$\begin{eqnarray*}
+P(X=k)= \displaystyle\frac{\lambda^{k}e^{-\lambda} }{k!} & (k=0,1,2, \cdots ) \\ \end{eqnarray*}$$
+__期待値__
+$$\begin{eqnarray*} 
+\lambda
+\end{eqnarray*}$$
+```{r}
+# 尤度関数
+defective_product_likelihood <- function(defective_products) {
+  return(function(lambda) {
+    # 1で初期化
+    L <- 1
+    
+    for (err_num in defective_products) {
+      # ポアソン分布の確率を乗じていく
+      L <- L * dpois(err_num, lambda = lambda)
+    }
+    return(L)
+  })
+}
+
+# 尤度関数の描画
+plot(
+  defective_product_likelihood(defective_product_num),
+  from = 0,
+  to = 5,
+  main = " maximum likelihood estimation",
+  xlab = "lambda",
+  ylab = "likelihood",
+  type = "b"
+)
+
+```
+
+```{r}
+# 最尤推定量(ラムダを0−10の間で動かして算出)
+optimise(
+  f = defective_product_likelihood(defective_product_num),
+  interval = c(0, 10),
+  maximum = TRUE
+  )
+```
+__パラメータλの最尤推定量＝1.733336__
+
+##### (2) 推定したパラメータをもとに、1日に発生する不良品が4個となる確率を求めなさい。 
+
+λ=1.733336なので、
+```{r}
+# ポアソン分布の描画
+pois <- c()
+
+# 期待値λ=1.733336に固定し不良品が1−10個発生する確率を格納
+for (i in seq(0, 10)) {
+  pois <- c(pois, dpois(i, 1.733336))
+}
+
+plot(
+  pois,
+  main = "Probability of defective item count", # 不良品の確率
+  xlab = "Number of defective items", # 不良品数
+  ylab = "Probability", # 確率
+  type = "b"
+)
+```
+
+```{r}
+# 不良品が4個となる確率
+dpois(4, 1.733336)
+```
+
+***
+#### 2.指数分布の最尤推定 
+ある製品の寿命を測定したところ、以下のデータが得られた。
+
+```{r}
+#製品寿命（単位:100時間）
+product_life_time <- c(5.7, 7.1, 8.3, 10.6, 12.9)
+```
+
+```{r echo = FALSE}
+plt <- data.frame(t(product_life_time))
+
+library(DT)
+DT::datatable(
+  plt,
+  rownames = "Product life(100h)", # 製品寿命（単位:100時間）
+  colnames = NULL,
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+  ),
+)
+```
+
+##### (1) 製品の寿命分布が指数分布に従うとき、パラメータλの最尤推定量を求めなさい。
+
+> 指数分布は連続型確率分布の一つで、機械が故障してから次に故障するまでの期間や、災害が起こってから次に起こるまでの期間のように、次に何かが起こるまでの期間が従う分布。
+
+__指数分布__
+$$\begin{align*}
+f(x;\lambda )=\left\{{\begin{array}{ll}\lambda e^{-\lambda x}&(x\geq 0)\\0&(x<0)\end{array}}\right.
+\end{align*}$$
+__期待値__
+$$\begin{align*}
+1/\lambda
+\end{align*}$$
+
+
+```{r}
+# 尤度関数(x>=0)
+product_life_time_likelihood <- function(product_life_time) {
+  return(function(lambda) {
+    L <- 1
+    
+    for (time in product_life_time) {
+      L <- L * dexp(time, rate = lambda)
+    }
+    return(L)
+  })
+}
+
+# 尤度関数の描画
+plot(
+  product_life_time_likelihood(product_life_time),
+  from = 0,
+  to = 1,
+  main = "maximum likelihood estimation",
+  xlab = "lambda",
+  ylab = "likelihood",
+  type = "b"
+)
+```
+
+```{r}
+# 最尤推定量(ラムダを0−1の間で算出)
+optimise(
+  product_life_time_likelihood(product_life_time),
+  interval = c(0, 1),
+  maximum = TRUE
+)
+```
+__パラメータλの最尤推定量＝0.1121085__
+
+##### (2) 推定したパラメータを元にこの製品の平均寿命を推定しなさい。
+
+```{r}
+# 平均寿命（期待値）
+1 / 0.1121085
+```
+
+*** 
+
+#### 3.負の二項分布の最尤推定量
+あるセールスマンは、ノルマとして毎月5件の電話でのアポ取りを設けられているとする。 これまでのノルマ達成に必要な電話をかけた回数は以下のようであった。
+
+```{r}
+#架電回数（単位:回/月）
+calling_num <- c(121, 113, 125, 118, 119, 124)
+
+#ノルマ（５回/月）達成確率
+success_rate <- format(c(5 / 121, 5 / 113, 5 / 125, 5 / 118, 5 / 119, 5 / 124), nsmall = 4)
+```
+
+
+```{r echo = FALSE}
+# 架電回数:Number of calls、ノルマ達成確率:success_rate
+calling_df <- data.frame("Number of calls" = calling_num, "Success rate" = success_rate)
+
+library(DT)
+DT::datatable(
+  calling_df,
+  rownames = NULL,
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+),
+)
+```
+##### (1) アポ取りが成功する確率pの最尤推定量を求めなさい。
+アポ取りの成否は２項分布
+$$\begin{eqnarray*} P(X=k)= {}_{n} \mathrm{C}_{k}  p^{k} (1-p)^{n-k} & (k=0,1,2,\cdots,n) \\ \end{eqnarray*} $$
+で表現できる為、アポ取りのノルマ達成（５件/月）確率に関する尤度関数は
+```{r}
+# 尤度関数
+appointment_likelihood <- function(calling_num) {
+  return(function(prob) {
+    L <- 1
+    for (num in calling_num) {
+      L <- L * dbinom(5, num, prob)
+    }
+    return(L)
+  })
+}
+
+# 尤度関数の描画
+plot(
+  appointment_likelihood(calling_num),
+  main = "maximum likelihood estimation",
+  xlab = "Success rate",
+  ylab = "likelihood",
+  type = "l"
+  )
+```
+
+```{r}
+# 最尤推定量(確率を0−1の間で算出)
+optimise(
+  appointment_likelihood(calling_num),
+  interval = c(0, 1),
+  maximum = TRUE
+  )
+```
+__確率pの最尤推定量 0.04165728__
+
+***
+##### (2) 100回の電話でノルマを達成する確率を求めなさい。
+(1)で算出した確率pの最尤推定量を使用し、
+```{r}
+# 二項分布の描画
+p2 <- c()
+
+for (i in seq(1, 200)) {
+  p2 <- c(p2, dbinom(5, i, 0.04165728))
+}
+
+plot(p2,  main="Success rate", xlab="Number of calls", ylab="Probability", type="l")
+```
+
+```{r}
+# 100回の電話でノルマ(５回)を達成する確率
+dbinom(5, 100, 0.04165728)
+```
+__100回の電話でノルマを達成する確率＝0.1658281__
