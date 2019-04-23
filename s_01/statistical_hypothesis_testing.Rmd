@@ -1,0 +1,156 @@
+---
+title: 仮説検定
+output:
+  html_document:
+    df_print: paged
+---
+#基礎問題
+
+### 1. サンプルサイズ
+あなたはモバイルアプリ企業で働くデータサイエンティストです。新しい広告によってクリック率が改善するかを確認するために、既存の広告をA案、新しい広告をB案とした、AB テストを企画しています。
+
+#####(1)以下の情報を使って、実験期間を定める為に必要なサンプルサイズを求めなさい。ただし検定手法はカイ二乗検定を予定しています。
+* 現在のクリック率は2%ですが、新しい事業サイドが求めるクリック率は1.3倍の 2.6%です。
+* 有意水準αは5%です。
+* 検出力は80%です。
+
+```{r}
+# 参照：http://abrahamcow.hatenablog.com/entry/2014/05/07/024305
+power.prop.test(p1=0.02
+                ,p2=0.026
+                ,sig.level = 0.05
+                ,power=0.8
+                ,alternative = "one.sided")
+```
+
+__サンプルサイズ＝7717.189__
+
+#####(2) (1)の条件のうち、検出力を90%に変化させたとき、必要なサンプルサイズはいくつにな りますか。
+
+```{r}
+# 検出力を 80 -> 90% に修正
+power.prop.test(p1=0.02
+                ,p2=0.026
+                ,sig.level = 0.05
+                ,power=0.9
+                ,alternative = "one.sided")
+```
+
+__サンプルサイズ＝10689.147__
+
+#####(3) 事業サイドは期待するクリック率の改善幅を、1.3倍ではなく、1.5倍だと言ってきまし た。これにより、サンプルサイズはいくつになりますか?
+
+```{r}
+# 検出力を p2を 0.02 * 1.5 -> 0.03 に修正
+power.prop.test(p1=0.02
+                ,p2=0.03
+                ,sig.level = 0.05
+                ,power=0.8
+                ,alternative = "one.sided")
+```
+
+__サンプルサイズ＝3012.95__
+
+#####(4) 再び、事業サイドは期待するクリック率の改善幅を現在の1.1倍だと言ってきました。こ れにより、サンプルサイズはいくつになりますか?
+
+```{r}
+# 検出力を p2を 0.02 * 1.1 -> 0.022 に修正
+power.prop.test(p1=0.02
+                ,p2=0.022
+                ,sig.level = 0.05
+                ,power=0.8
+                ,alternative = "one.sided")
+```
+
+__サンプルサイズ＝63552.55__
+
+#発展問題
+### 1.(paired test:対応のあるt検定)
+10人の営業マンに対して、「売上倍増!営業トレーニング」を行った。トレーニング前後 で1ヶ月の売上を比較したところ以下のようになった。このトレーニングに効果があったの かを検証したい。(単位: 万円)
+```{r}
+before_sales <- c(120, 118, 125, 131, 112, 108, 111, 121, 116, 109)
+after_sales <- c(118, 117, 118, 122, 109, 108, 109, 115, 112, 108)
+```
+
+```{r echo = FALSE}
+sales_man <- c("sales A","sales B","sales C","sales D","sales E","sales F","sales G","sales H","sales I","sales J")
+
+sales <- matrix(c(before_sales,after_sales),nrow = 2)
+df <- data.frame((sales))
+
+library(DT)
+DT::datatable(df, rownames = c("before","after"), colnames = c("Sales Staff",sales_man), class = "stripe cell-border", options = list( autoWidth = TRUE,dom = 't',ordering=F),)
+```
+
+上記のデータを用いて、paired t検定を行いなさい。
+
+```{r}
+# トレーニング前の売上平均
+paste("### Average sales before training :", mean(before_sales))
+
+# トレーニング後の売上平均
+paste("### Average sales after training : ", mean(after_sales))
+```
+
+帰無仮説：トレーニング効果なし  
+対立仮説：トレーニング効果あり(売上増加効果あり)
+
+
+ヒント:  
+● 前後比較のようにデータをペアリングできる場合は、ただのt検定ではなく、paired t検定を使います。  
+● Rでは、t.test(paired = TRUE)とすると簡単にできます。  
+● 注意すべき事項として、入力するデータ数が同じである必要があります。
+
+```{r}
+# 対応のあるt検定
+t.test(after_sales
+       ,before_sales
+       ,alternative = "greater"
+       ,paired=TRUE
+       ,var.equal = FALSE)
+```
+__p-value = 0.9977__
+の為、トレーニング効果があったとは言えない。
+
+
+### 2.(F test:F検定 等母分散検定-> 等しくない場合はwelchのt検定)
+2つのハンバーガーチェン店A,Bで売られているハンバーガーの重さ( 単位:g )を測ったところ以下の ようなデータが得られた。
+
+```{r}
+shop_a <- c(121, 125, 119, 118, 126, 110, 120)
+shop_b <- c(123, 119, 121, 114, 127, 113, 118)
+```
+
+```{r echo = FALSE}
+gram <- matrix(c(shop_a,shop_b),nrow = 2)
+df <- data.frame((gram))
+
+library(DT)
+DT::datatable(df, rownames = c("shop A","shop B"), colnames = NULL, class = "stripe cell-border", options = list( autoWidth = TRUE,dom = 't',ordering=F),)
+```
+
+このとき、二つのハンバーガチェーン店A,Bで売られているハンバーガーの重さの分散に違 いがあるといえるか検定しなさい。
+
+```{r}
+# A店の標本分散
+paste("### Sample variance of shop A : ", var(shop_a))
+
+# B店の標本分散
+paste("### Sample variance of shop B : ", var(shop_b))
+```
+
+帰無仮説：母分散に違いなし  
+対立仮説：母分散に違いあり
+
+ヒント:  
+● 2つのグループのデータのばらつき度合いを比較する場合は、F検定を用います。
+    => F = 分散1/分散2  とした時に、F分布に従うことが知られているからです。  
+● Rでは、var.test(x, y) (xはグループ1, yはグループ2)で簡単にできます。
+
+```{r}
+# F検定
+var.test(shop_a,shop_b, alternative = "two.sided")
+```
+
+__p-value = 0.8717__
+の為、両店舗のハンバーガーの重さの分散に違いがあるとは言えない。
