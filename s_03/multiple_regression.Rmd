@@ -1,0 +1,165 @@
+---
+title: "Rによる統計モデリング Day1宿題"
+output: html_notebook
+---
+
+Automobile_data.csvは、車を特徴付ける機能を車種ごとにまとめたデータである。
+```{r echo = FALSE}
+library(MASS)
+library(DT)
+library(car)
+
+automobile_data<-read.csv("Automobile_data.csv")
+
+DT::datatable(automobile_data, class = "stripe cell-border", filter = 'top', extensions = 'ColReorder', options = list(autoWidth = TRUE, dom = 'Rlfrtip', autoWidth = TRUE))
+```
+ No| カラム名|説明  
+ --|-------|------  
+ 1.| make | メーカー  
+ 2.| fuel.type | 燃料の種類  
+ 3.| num.of.doors | ドアの数  
+ 4.| wheel.base | 前輪から後輪までの距離  
+ 5.| length | 車体の長さ  
+ 6.| width | 車幅  
+ 7.| height | 車高  
+ 8.| horse.power | 馬力  
+ 9.| city.mpg | 燃費(街中)  
+10.| highway.mpg | 燃費(高速道路)  
+11.| price | 価格  
+
+このデータを用いて、車の価格を予測する以下の重回帰モデル(model1)を考える。
+
+>price = β0 + β1 · (fuel.type) + β2 · (num.of.doors) + β3 · (length) + β4 · (horsepower) + β5 · (city.mpg) + β6 · (highway.mpg)
+
+```{r}
+# カテゴリ変数はas.factor（因子型）に変換する
+automobile_data2 <- automobile_data
+automobile_data2$fuel.type<-as.factor(automobile_data2$fuel.type)
+
+model1 <- lm(price~+fuel.type+num.of.doors+length+horsepower+city.mpg+highway.mpg, data=automobile_data2)
+```
+
+#### (1) 自由度調整済み決定係数を求めなさい。また、F検定の結果を解釈しなさい。 
+（fuel.typedieselは自由度の関係で説明変数に入ってこない）
+
+```{r}
+summary(model1)
+```
+**自由度調整済み決定係数:0.7455**  
+**F検定結果：p-value: < 2.2e-16 < 0.05 より、model1は有意。**
+
+#### (2) AICの値を求めなさい。
+```{r}
+AIC(model1)
+```
+**AIC = 3002.409**
+
+#### (3) 多重共線性の存在を確認し、相関が強い変数の組を答えなさい。
+
+```{r}
+# 多重共線性の確認
+vif(model1)
+```
+**city.mpg と highway.mpg は多重共線性あり（値が10以上）**
+
+```{r}
+# 余因子だと"fuel.type"の相関が確認できないので、別のやり方でダミー変数を作成
+# TODO：fatal error: 'omp.h' file not foundとなってcaretと依存関係のあるModelMetricsがインストールできない
+# library(caret)
+# dummy変数化
+#automobile_data3 <- dummyVars(~+fuel.typegas,data=automobile_data2)
+
+# 相関の確認("fuel.type"除く）
+target_cols <- c( "num.of.doors", "length", "horsepower", "city.mpg", "highway.mpg")
+cor(automobile_data2[, target_cols])
+```
+**num.of.doors以外は相関関係が強い傾向がある。（0.7以上）**  
+**特にcity.mpg と horsepower（-0.8372142）、highway.mpg（0.9719988） は相関関係がが強い。**
+
+#### (4) (3)の変数のうち、変数を排除した後のモデルのAICを比較することで変数選択を行いなさい。この変数選択をしたモデルをmodel2とする。
+
+```{r}
+# ステップワイズ法で変数を自動選択
+model2 <- step(model1)
+AIC(model2)
+```
+**ステップワイズ法により num.of.doors と city.mpg を除外**
+**AICは3002.409 => 3000.089 に減少。**
+**(step中のAICはextractAICを採用している為、定数部分は未評価。）**
+
+#### (5) model2の回帰係数とt検定の結果から、model2の解釈を行いなさい。
+
+```{r}
+summary(model2)
+```
+**回帰モデルに意味はあるが（F検定）、Intercept が有意と言えない。**
+
+#### (6) model2の残差をQ-Qプロットで図示しなさい
+誤差の正規性を確認
+```{r}
+qqnorm(model2$residuals)
+qqline(model2$residuals, col="red")
+```
+ヒストグラムで確認
+```{r}
+hist(model2$residuals,  breaks=seq(-7000, 18000, 1000))
+```
+正規性はロングテール気味なので、priceに対して対数を取ってみる。
+
+```{r}
+model3 <- lm(log(price) ~ fuel.type + length + horsepower + highway.mpg, data = automobile_data2)
+summary(model3)
+AIC(model3)
+vif(model3)
+```
+
+```{r}
+hist(model3$residuals, breaks=seq(-0.5, 0.6, 0.05))
+```
+AICをはじめ、誤差の正規性以外はモデルは良くなっている為、以降、model3を扱っていく
+
+#### (7) クック距離を調べることで、外れ値と考えられるデータを抽出しなさい。
+```{r}
+# model3のクック距離を算出
+cook_dist_result <- cooks.distance(model3)
+
+# 最大値を取得
+max(cook_dist_result)
+
+# 目安となるクックの距離を算出
+total_data_amount <- dim(automobile_data2)
+cook_dist <- 4/total_data_amount[1]
+cook_dist
+```
+**クックの距離の最大値：0.2735516**
+**目安となるクックの距離の適正値：0.02515723**
+
+```{r}
+# クックの距離を視覚的に描画
+plot(model3)
+```
+**外れ値と思われるデータのインデックスは(9, 20, 49)**
+
+###### (8) (7)で抽出した外れ値を除去したデータを用いることで、model3のAICの値が下がることを確かめなさい
+
+```{r}
+# 外れ値を除去
+automobile_data3 <- automobile_data2[-c(9, 20, 49), ]
+
+# モデルを再構築
+model4 <- lm(log(price) ~ fuel.type + length + horsepower + highway.mpg, data = automobile_data3)
+
+# 検証
+summary(model4)
+AIC(model4)
+vif(model4)
+```
+**t検定、F検定、多重共線性に問題はなくAICも -95.08072 -> -118.0345 に低下**
+
+###### 補足
+外れ値除外後の正規性を確認
+```{r}
+qqnorm(model4$residuals)
+qqline(model4$residuals, col="red")
+hist(model4$residuals, breaks=seq(-0.5, 0.6, 0.05))
+```

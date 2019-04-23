@@ -1,0 +1,494 @@
+---
+title: "Rによる統計モデリング Day2宿題"
+output: html_notebook
+---
+
+###【データの概要】 
+データは、train(学習データ)とtest(検証データ)があり、以下の変数で構成されていま す。
+ただし、今回は、’Name’, ’Ticket’, ’Cabin’の3つは、変数として考えないことにする。
+
+カラム名|説明 
+ --|-------  
+PassengerId | 乗客ID
+Survived | 生存したかどうか(0:死亡、 1:生存) ※trainデータのみ
+Pclass | チケットのクラス(1,2,3の3種類) 
+Name | 乗客の名前
+Sex | 性別  
+Age | 年齢 
+SibSp | タイタニック号に同乗している兄弟 / 配偶者の数 : タイタニック号に同乗している親 / 子供の数
+Parch | チケットの番号
+Ticket Fare | 運賃 
+Cabin | 客室番号 
+Embarked | 乗船した港(Cherbourg、Queenstown、Southamptonの3種類)
+
+```{r}
+library(MASS)
+library(DT)
+library(car)
+library(fastDummies)
+library(class)
+
+# 空白はNA扱いでcsv読み込み
+titanic_train_df<-read.csv("train.csv", stringsAsFactors=F, na.strings=(c("NA", "")))
+titanic_test_df<-read.csv("test.csv", stringsAsFactors=F, na.strings=(c("NA", "")))
+```
+
+#### train.csv
+```{r echo=FALSE}
+DT::datatable(titanic_train_df, class = "stripe cell-border", filter = 'top', extensions = 'ColReorder', options = list(autoWidth = TRUE, dom = 'Rlfrtip', autoWidth = TRUE))
+```
+
+### 事前準備
+#### 使用しない’Name’, ’Ticket’, ’Cabin’ の切り捨て
+```{r}
+titanic_train_df <- titanic_train_df[, !(colnames(titanic_train_df) %in% c("Name", "Ticket", "Cabin"))]
+titanic_test_df <- titanic_test_df[, !(colnames(titanic_test_df) %in% c("Name", "Ticket", "Cabin"))]
+
+# コピーを作成
+factored_train_df = cbind(titanic_train_df)
+factored_test_df = cbind(titanic_test_df)
+
+# 因子ベクトル化
+factored_train_df$Sex = as.factor(titanic_train_df$Sex)
+factored_train_df$Embarked = as.factor(titanic_train_df$Embarked)
+factored_test_df$Sex = as.factor(titanic_test_df$Sex)
+factored_test_df$Embarked = as.factor(titanic_test_df$Embarked)
+```
+
+#### 欠損値の確認
+train.csv
+```{r echo=FALSE}
+# train.csv
+sapply(factored_train_df, function(y) sum(is.na(y)))
+```
+##### 欠損値のデータ確認
+```{r}
+# trainデータの欠損値確認
+missing_train_df = factored_train_df[!complete.cases(factored_train_df), ]
+missing_train_df
+```
+
+test.csv
+```{r echo=FALSE}
+# test.csv
+sapply(factored_test_df, function(y) sum(is.na(y)))
+```
+
+```{r}
+# testデータの欠損値確認
+missing_test_df = factored_test_df[!complete.cases(factored_test_df), ]
+missing_test_df
+```
+
+##### モデル学習用に欠損値を含まないtrainデータの抽出
+exist_train_dfを使用してモデルを作成
+```{r}
+# 欠損値を含まないtrainデータを作成
+exist_train_df = factored_train_df[complete.cases(factored_train_df), ]
+
+# オブジェクトの概要を表示
+str(exist_train_df)
+```
+
+### 問1.(前処理)
+#### 1) trainデータの'Age','Embarkedの'欠損を補完しなさい 
+Ageは重回帰、EmberkedはK-最近傍法で予測する。
+
+##### 重回帰によるAgeの予測モデルを作成
+trainデータをクロスバリデーション用に分割
+```{r}
+# seedをセット
+set.seed(123)
+
+# 行数取得
+row_count <- nrow(exist_train_df) 
+
+# 訓練データのサイズを計算
+train_size <- floor(0.75 * row_count)
+
+# trainデータのインデックス配列を作成
+train_idx <- sample(seq_len(row_count), size = train_size)
+
+# 訓練データ（train）と検証データ（test)を作成
+train_age_df <- exist_train_df[train_idx, ]
+test_age_df <- exist_train_df[-train_idx, ]
+
+# PassengerId以外でモデルを作成
+age_lr <- step(lm(Age~.-PassengerId, data = train_age_df))
+summary(age_lr)
+AIC(age_lr)
+```
+F検定が問題ない為、予測重視でstep結果を採用。（過剰適合、適合不足の判断方法が不明）
+
+##### （参考）モデルの汎化を確認
+訓練セットのRMSE
+```{r}
+train_age_pred<-predict(age_lr, newdata = train_age_df)
+train_age_mse<-sum((train_age_df$Age - train_age_pred)^2)/length(train_age_pred)
+sqrt(train_age_mse)
+```
+テストセットのRMSE
+```{r}
+test_age_pred<-predict(age_lr, newdata = test_age_df)
+test_age_mse<-sum((test_age_df$Age - test_age_pred)^2)/length(test_age_pred)
+sqrt(test_age_mse)
+```
+##### Ageの予測
+```{r}
+# Ageに欠損値があるデータセットを取得
+missing_age_df = subset(missing_train_df, is.na(missing_train_df$Age))
+
+# 予測
+pred_age <- predict(age_lr, newdata = missing_age_df)
+pred_age <- as.numeric(pred_age)
+```
+
+##### 予測値の書式を修正
+```{r}
+# 1歳以上の年齢の小数点は.00 または .0.50となるように四捨五入
+arange_age<-function(age){
+
+    estimated_age = 0
+    
+    if(age < 0 ){
+      return (format(round(0.00, digits = 2), nsmall = 2))  
+    }
+    # 四捨五入して小数点第2位まで評価
+    estimated_age = round(age, digits = 2)
+    
+    # 年齢が１歳以上だったら、
+    if( estimated_age > 1) {
+      
+      int_part_age = trunc(estimated_age)
+      dec_part_age = estimated_age - int_part_age
+      
+      if(dec_part_age >= 0.5){
+        estimated_age = int_part_age + 0.50
+      }else{
+        estimated_age = int_part_age
+      }
+      
+      # 小数部を２桁に揃える
+      estimated_age = format(round(estimated_age, digits = 2), nsmall = 2)
+    }
+    
+    return(estimated_age)
+}
+
+# 年齢の書式
+pred_age <- lapply(pred_age, arange_age)
+pred_age <- as.numeric(pred_age)
+```
+
+##### 予測した値でAgeを補完
+```{r}
+# TODO スマートなコード
+for(i in 1:nrow(factored_train_df)){
+
+    if(is.na(factored_train_df[i,]$Age)){
+      factored_train_df[i,]$Age = pred_age[1]
+      pred_age = pred_age[-1]
+    }
+  }
+
+# Ageの欠損値がなくなっている事を確認
+sapply(factored_train_df, function(y) sum(is.na(y)))
+```
+
+##### Embarked補完用データの作成
+[データを標準化](http://www.juen.ac.jp/lab/okumura/handout/151116R%E3%81%AB%E3%82%88%E3%82%8B%E3%83%87%E3%83%BC%E3%82%BF%E3%81%AE%E6%A8%99%E6%BA%96%E5%8C%96.pages.pdf)(平均:0、分散：1）  
+
+訓練データを作成
+```{r}
+# K-最近傍法でモデル構築が出来る様にダミー変数化
+exist_embarked_df = dummy_cols(.data=exist_train_df, select_columns = NULL, remove_first_dummy = FALSE,  remove_most_frequent_dummy = FALSE)
+
+# K-最近傍法に不要な列を削除
+exist_embarked_df <- exist_embarked_df[, !(colnames(exist_embarked_df) %in% c("PassengerId", "Sex", "Embarked", "Embarked_S", "Embarked_C", "Embarked_Q", "Embarked_NA"))]
+
+# 標準化
+exist_embarked_df = scale(exist_embarked_df)
+
+# K-最近傍法のcl用にEmbarked列を抽出
+factor_embarked = exist_train_df$Embarked
+```
+
+テストデータを作成
+```{r}
+# 欠損データではSexが１種類だけになってしまうので、先にダミー変数化
+missing_embarked_df = dummy_cols(.data=factored_train_df, select_columns = NULL, remove_first_dummy = FALSE,  remove_most_frequent_dummy = FALSE)
+
+# K-最近傍法に不要な列を削除
+missing_embarked_df <- missing_embarked_df[, !(colnames(missing_embarked_df) %in% c("PassengerId","Sex", "Embarked", "Embarked_S", "Embarked_C", "Embarked_Q"))]
+
+# 特徴量でスケールが異なる為、データを標準化
+missing_embarked_df = scale(missing_embarked_df)
+
+# 欠損値データのみを抽出
+missing_embarked_df = data.frame(missing_embarked_df)
+# TODO：PassengerIDでプログラミング的に抽出
+missing_embarked_df = missing_embarked_df[missing_embarked_df$Embarked_NA > 0,]
+
+# "Embarked_NA"列を削除
+missing_embarked_df <- missing_embarked_df[, !(colnames(missing_embarked_df) %in% c("Embarked_NA"))]
+missing_embarked_df = as.matrix(missing_embarked_df)
+```
+
+
+##### Embarkedの予測
+```{r}
+pred_embarked = knn(train = exist_embarked_df, test = missing_embarked_df, cl = factor_embarked, k = 1,)
+str(pred_embarked)
+```
+Embarkedの欠損値は全て"S"
+
+##### Embarkedの補完
+```{r}
+for(i in 1:nrow(factored_train_df)){
+
+    if(is.na(factored_train_df[i,]$Embarked)){
+      factored_train_df[i,]$Embarked = "S"
+    }
+}
+
+# Ageの欠損値がなくなっている事を確認
+sapply(factored_train_df, function(y) sum(is.na(y)))
+```
+
+欠損値を補完した訓練データは、factored_train_df
+
+#### 2) testデータの'Age','Fare'の欠損を補完しなさい
+重回帰でAgeとFareを補完
+
+```{r}
+# 欠損値のないテストデータ
+exist_test_df = factored_test_df[complete.cases(factored_test_df), ]
+
+# 行数取得
+row_test_count <- nrow(exist_test_df) 
+
+# 訓練データのサイズを計算
+test_size <- floor(0.75 * row_test_count)
+
+# trainデータのインデックス配列を作成
+test_idx <- sample(seq_len(row_test_count), size = test_size)
+
+# 訓練データ（train）と検証データ（test)を作成
+train2_df <- exist_test_df[test_idx, ]
+test2_df <- exist_test_df[-test_idx, ]
+
+test_age_lr <- step(lm(Age~.-PassengerId, data = train2_df))
+test_fare_lr <- step(lm(Fare~.-PassengerId, data = train2_df))
+```
+
+```{r}
+summary(test_age_lr)
+AIC(test_age_lr)
+```
+
+```{r}
+summary(test_fare_lr)
+AIC(test_fare_lr)
+```
+F検定が問題ない為、予測重視でstep結果を採用
+
+##### （参考）モデルの汎化を確認
+訓練セットのRMSE
+```{r}
+train2_age_pred<-predict(test_age_lr, newdata = train2_df)
+train2_age_mse<-sum((train2_df$Age - train2_age_pred)^2)/length(train2_age_pred)
+sqrt(train2_age_mse)
+```
+テストセットのRMSE
+```{r}
+test2_age_pred<-predict(test_age_lr, newdata = test2_df)
+test2_age_mse<-sum((test2_df$Age - test2_age_pred)^2)/length(test2_age_pred)
+sqrt(test2_age_mse)
+```
+
+##### AgeとFareを補完
+
+```{r}
+# Age、Fareに欠損値があるデータセットを取得
+missing_test_age_df = subset(missing_test_df, is.na(missing_test_df$Age))
+missing_test_fare_df = subset(missing_test_df, is.na(missing_test_df$Fare))
+
+# 予測
+test2_age_pred<-predict(test_age_lr, newdata = missing_test_age_df)
+test2_age_pred <- as.numeric(test2_age_pred)
+test2_age_pred <- lapply(test2_age_pred, arange_age)
+test2_age_pred <- as.numeric(test2_age_pred)
+
+test2_fare_pred<-predict(test_fare_lr, newdata = missing_test_fare_df)
+test2_fare_pred <- as.numeric(test2_fare_pred)
+
+# TODO スマートなコード
+for(i in 1:nrow(factored_test_df)){
+
+  if(is.na(factored_test_df[i,]$Age)){
+    factored_test_df[i,]$Age = test2_age_pred[1]
+    test2_age_pred = test2_age_pred[-1]
+  }
+  
+  if(is.na(factored_test_df[i,]$Fare)){
+    factored_test_df[i,]$Fare = test2_fare_pred[1]
+    test2_fare_pred = test2_fare_pred[-1]
+  }
+}
+
+# Ageの欠損値がなくなっている事を確認
+sapply(factored_test_df, function(y) sum(is.na(y)))
+```
+
+#### 3) 'Pclass','Sex','Embarked'をダミー変数にしなさい
+１）にて済み。
+
+### 問2.(変数の作成)
+#### 4) 'Pclass', 'Sex', 'Embarked', 'Age', 'Fare', 'SibSp', 'Parch'のいずれかを使って、新たな変数 を
+1つ作りなさい。 
+```{r}
+# Age / Pclass の変数を作成
+factored_train_df$AgeDividePclass = factored_train_df$Age / factored_train_df$Pclass
+```
+
+### 問3.(ロジスティック回帰モデルによる予測)
+#### 5) 4)で作った変数と、'Pclass', 'Sex', 'Embarked', 'Age', 'Fare', 'SibSp', 'Parch'を説明変数に ’Survived’を目的変数にしてロジスティック回帰モデルを作りなさい
+
+
+##### モデル学習用のtrain、testデータを作成
+```{r}
+# 行数取得
+lr_row_count <- nrow(factored_train_df) 
+
+# 訓練データのサイズを計算
+lr_train_size <- floor(0.75 * lr_row_count)
+
+# trainデータのインデックス配列を作成
+lr_train_idx <- sample(seq_len(lr_row_count), size = lr_train_size)
+
+# 訓練データ（train）と検証データ（test)を作成
+train_lr_df <- factored_train_df[lr_train_idx, ]
+test_lr_df <- factored_train_df[-lr_train_idx, ]
+```
+
+
+##### ロジスティック回帰モデル作成
+
+```{r}
+suvived_lr <- glm(Survived~Pclass+Sex+Embarked+Age+Fare+SibSp+Parch+AgeDividePclass, data = train_lr_df, family = "binomial")
+```
+
+#### 6) 作成したロジスティック回帰の解釈を行いなさい
+
+```{r}
+summary(suvived_lr)
+```
+```{r}
+str(factored_train_df$Sex)
+```
+
+
+EmbarkedQ、EmbarkedS、Fare、Parch、AgeDividePclassは棄却できない為、回帰係数が0ではないとは言えない。  
+それ以外のPclass、Sexmale（女性＝1、男性＝2）、Age、SibSpの係数は負であり、  
+・客室の等級が低い  
+・男性である  
+・年齢が低い  
+・同船している親族が少ない  
+ほど、生存確率が低くなる。特に性別と客室の等級は影響度が大きいと言える。  
+
+次に、anova用にstepで最適化してみる
+```{r}
+suvived_lr2 <- step(glm(Survived~Pclass+Sex+Age+Fare+SibSp+Parch+AgeDividePclass, data = train_lr_df, family = "binomial"))
+```
+
+```{r}
+summary((suvived_lr2))
+```
+AICは603.92 => 598.25 とよくなっている。
+
+#### オッズ比
+```{r}
+exp(suvived_lr$coefficients)
+```
+棄却できた説明変数（Pclass、Sexmale、Age、SibSp）に対して、解釈すれば
+Age > SibSp ＞ Pclass の順で生存結果に影響を与えやすい。Sexmaleに関しては、カテゴリー値（=2）であるので、オッズ比の解釈対象には出来ない。
+
+#### 分散分析による尤度比検定
+```{r}
+anova(suvived_lr2, suvived_lr, test="LRT")
+```
+suvived_lrの方が説明力は上（4.3281説明できた。）
+
+AIC
+```{r}
+AIC(suvived_lr)
+AIC(suvived_lr2)
+```
+AICとしてはsuvived_lr2方が上。
+
+##### 混合行列による制度評価
+
+テストデータで予測
+```{r}
+pred_survived = predict(suvived_lr, newdata = test_lr_df, type="response")
+pred_survived<-ifelse(pred_survived > 0.95, 1, 0)
+str(pred_survived)
+```
+
+混合行列を作成
+```{r}
+conf_mat<-table(test_lr_df$Survived, pred_survived)
+conf_mat
+```
+
+閾値を調整して混合行列を再作成（正解率をあげる事が目的）
+```{r}
+pred_survived = predict(suvived_lr, newdata = test_lr_df, type="response")
+pred_survived<-ifelse(pred_survived > 0.55, 1, 0)
+conf_mat<-table(test_lr_df$Survived, pred_survived)
+conf_mat
+```
+
+正解率（Accuracy）
+```{r}
+accuracy<-(conf_mat[1] + conf_mat[4]) /(conf_mat[1] + conf_mat[2] + conf_mat[3] + conf_mat[4])
+accuracy
+```
+
+再現率（Recall）
+```{r}
+recall = conf_mat[4] / (conf_mat[3] + conf_mat[4])
+recall
+```
+
+適合率
+```{r}
+precision = conf_mat[1] / ( conf_mat[1] + conf_mat[3])
+precision
+```
+
+F値
+```{r}
+2*precision*recall/(precision+recall)
+```
+
+
+#### 7) 作成したロジスティック回帰モデルを用いて、testデータのSurvivedを予測しなさい
+
+```{r}
+suvived_pred <-predict(suvived_lr2, newdata = factored_test_df, type="response") 
+
+#閾値を設定
+suvived_flag<-ifelse(suvived_pred > 0.55, 1, 0)
+
+# テストデータに生存予想結果を追加
+factored_test_df$Pred_Survived <- suvived_flag
+factored_test_df[factored_test_df$Pred_Survived == 1,]
+
+# ファイルに出力
+# write.csv(factored_test_df, "./predicted_survived.csv")
+
+```
+
+#### 8) 最後に予測した結果をKaggleに提出し、算出されたスコアを記述しなさい
+対象外
