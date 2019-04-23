@@ -1,0 +1,264 @@
+---
+title: "<e7><b7><9a><e5><bd><a2><e5><9b><9e><e5><b8><b0><e5><88><86><e6><9e><90>"
+output:
+  html_document:
+    df_print: paged
+---
+
+# データの読み込み
+
+```{r}
+library(MASS)
+library(DT)
+library(car)
+
+house_data<-read.csv("data/kc_house_data.csv")
+
+DT::datatable(house_data, class = "stripe cell-border", filter = 'top', extensions = 'ColReorder', options = list(autoWidth = TRUE, dom = 'Rlfrtip', autoWidth = TRUE))
+```
+
+# sqft_aboveを説明変数、priceを被説明変数として線形回帰モデルをやってみる
+```{r}
+# 傾き:268.5、切片:59953.2
+house_lm1<-lm(price~sqft_above, data=house_data)
+house_lm1
+```
+
+```{r}
+# サマリー：決定係数：0.3667、切片と、傾きのp値は2e-16
+summary(house_lm1)
+```
+要約で大切な箇所は、Pr(>|t|) （p値）とMultiple R-squared（決定係数）
+
+> Coefficients:  
+>             Estimate Std. Error t value Pr(>|t|)    
+> (Intercept)  59953.2     4729.8   12.68   <2e-16 ***  
+> sqft_above     268.5        2.4  111.87   <2e-16 ***  
+>
+> Multiple R-squared:  0.3667,	Adjusted R-squared:  0.3667 
+
+
+## 残差の正規性をヒストグラムでチェック
+誤差（ε）は正規分布に従うと仮定していたので、実際の残差が正規分布に従っているかを確認
+正規分布にしたがっていないならば、仮定が崩れる。
+```{r}
+hist(house_lm1$residuals, breaks=seq(-1e+06,5.4e+06,1e+05))
+```
+
+## 残差の正規性をqqプロットでチェック
+標準正規分布に変換した場合、どの位離れているか？を確認
+```{r}
+## qqプロット
+qqnorm(house_lm1$residuals)
+qqline(house_lm1$residuals, col="red")
+```
+正規性が保たれていないので、価格の対数でモデルを作成してみる。
+
+```{r}
+house_lm2<-lm(log(price)~sqft_above, data=house_data)
+summary(house_lm2)
+```
+
+```{r}
+hist(house_lm2$residuals,breaks=seq(-2, 2, 0.05))
+```
+
+```{r}
+qqnorm(house_lm2$residuals)
+qqline(house_lm2$residuals, col="red")
+```
+誤差の正規性は良さそう。
+＃クックの距離
+外れ値があるかを調べる
+```{r}
+house_lm2_wip <- house_lm2
+ck_dist <- cooks.distance(house_lm2_wip)
+ck_dist[ck_dist == max(ck_dist)]
+```
+総距離は12778、最も外れているのは0.01984297 
+描画してみる。
+
+```{r}
+plot(house_lm2_wip)
+```
+クック􏰀距離が、4/データ数より大きいデータ点􏰁はインフルエンスが大きいと言われている。
+上図だと（1623、18595、12778）。外れ値を除外して、モデルを再構築
+```{r}
+house_data_wip <- house_data[-c(1623, 18595, 12778), ]
+house_lm2_wip<-lm(log(price)~sqft_above, data=house_data_wip)
+
+ckck_dist <- cooks.distance(house_lm2_wip)
+ck_dist[ck_dist == max(ck_dist)]
+summary(house_lm2_wip)
+```
+```{r}
+plot(house_lm2_wip)
+```
+今回は、外れ値を除くと、決定係数もクックの距離の大きくなってしまったので、外さない方が良い。
+
+# 重回帰分析
+
+## 準備：カテゴリ変数をダミー変数に変換する
+waterfront,view,condition,gradeを変換する。変換は
+> as.factor（因子型）に変換する
+
+```{r}
+house_data$waterfront<-as.factor(house_data$waterfront)
+house_data$view<-as.factor(house_data$view)
+house_data$condition<-as.factor(house_data$condition)
+house_data$grade<-as.factor(house_data$grade)
+```
+
+## 重回帰分析
+id,date,zipcode,lat,long,yr_built,yr_renovated を除いて重回帰分析
+説明変数を増やせば、決定係数が上がるので、説明変数を増やすことへのペナルティーを加えた上で分析
+分析結果は、数学的に証明されているAICで評価（592752.6）
+```{r}
+house_lm3<-lm(price~.-id-date-zipcode-lat-long-yr_built-yr_renovated, data=house_data)
+AIC(house_lm3)
+```
+一方、自由度調整済み決定係数（Adjusted R-squared:  0.6467）は数学的な根拠が提案。
+```{r}
+summary(house_lm3)
+```
+### 誤差の正規性のチェック
+```{r}
+hist(house_lm3$residuals, breaks=seq(-1.7e+06,6.0e+06,5e+04))
+```
+
+qqプロット
+```{r}
+qqnorm(house_lm3$residuals)
+qqline(house_lm3$residuals, col="red")
+```
+正規性がないので、価格に対数( log(price) )を取ってみる。
+```{r}
+house_lm4<-lm(log(price)~.-id-date-zipcode-lat-long-yr_built-yr_renovated, data=house_data)
+summary(house_lm4)
+```
+
+
+```{r}
+hist(house_lm4$residuals, breaks=seq(-1.6, 1.6, 0.05))
+```
+
+```{r}
+qqnorm(house_lm4$residuals)
+qqline(house_lm4$residuals, col="red")
+```
+
+
+正規性は保たれたが、summuryを見ると
+ bedrooms      -1.626e-02
+ bathrooms     -1.585e-02
+ sqft_above    -1.203e-04
+の回帰係数（傾き）がマイナスになっている。これは、ベッド数が少なくなると、価格が下がるという事であり、モデルがおかしそうだ。
+
+### 多重共線性の確認
+説明変数間で相関が強くなっていないか？を確認
+```{r}
+vif(house_lm4)
+```
+> there are aliased coefficients in the model 
+
+とは完全に相関してる項目が存在しているというエラー。
+何が、相関しているかを確認
+
+```{r}
+alias(lm(log(price)~.-id-date-zipcode-lat-long-yr_built-yr_renovated, data=house_data))
+```
+sqft_basementとsqft_living、sqft_aboveの相関係数が±1なので、sqft_basementを削除した上で、多重共線性（マルチコ）を確認
+一般に、5以上で要注意。10以上でマルチコありとなる
+```{r}
+house_lm4<-lm(log(price)~.-id-date-zipcode-lat-long-yr_built-yr_renovated-sqft_basement,data=house_data)
+vif(house_lm4)
+```
+AICを再確認
+```{r}
+AIC(house_lm4)
+```
+ 13650.99 < 592752.6 (説明変数削除前から、AICが小さくなっている=モデルが良くなっている）
+ 続いて、サマリーを再確認
+```{r}
+summary(house_lm4)
+```
+ マルチコを解消したが、p直で棄却できない項目（condition、grade）を説明変数から外す。
+```{r}
+house_lm5<-lm(log(price)~.-id-date-zipcode-lat-long-yr_built-yr_renovated-sqft_basement-condition-grade,data=house_data)
+summary(house_lm5)
+AIC(house_lm5)
+vif(house_lm5)
+```
+AIC（16786.6）は大きくなり、bedroomsとsqft_aboveの説明がつかないが全体的にはよくなった。
+
+# ステップワイズ方で、モデルの最適化を試す。
+stepとAICではAICの直が変わるが、step関数内で使用しているAICは定数項を除いたAIC(extractAIC)。
+どちらでも意味合いとしては同じ。
+```{r}
+house_lm6<-step(house_lm3)
+summary(house_lm6)
+AIC(house_lm6)
+```
+
+
+# 予測
+単純にする為、price-sqft_aboveの単回帰分析を考える
+```{r}
+house_lm6<-lm(price~sqft_above, data=house_data)
+house_lm6
+```
+
+```{r}
+plot(house_data$sqft_above, house_data$price)
+abline(house_lm6, col="red")
+```
+
+```{r}
+new_data<-data.frame(sqft_above=c(2000,4000,6000,8000))
+new_data
+```
+
+## 回帰直線上の値を求める場合
+```{r}
+predict(house_lm6, newdata = new_data)
+```
+
+
+
+## 信頼区間も含めて求める場合
+predict(house_lm6, newdata = new_data, interval = "confidence")
+
+## 信頼区間も含めて求める場合
+predict(house_lm6, newdata = new_data, interval = "predict")
+
+#可視化してみましょう
+plot(house_data$sqft_above, house_data$price, xlim=c(-1000, 12000), ylim=c(-1000,4e+6))
+abline(house_lm6, col="red")
+
+sqft_above_seq<-c(-1000:12000)
+new_data2<-data.frame(sqft_above=sqft_above_seq)
+conf_interval<-predict(house_lm6, newdata = new_data2, interval = "confidence")
+lines(sqft_above_seq,conf_interval[,2],col="blue",lty=2)
+lines(sqft_above_seq,conf_interval[,3],col="blue",lty=2)
+
+pred_interval<-predict(house_lm1, newdata = new_data2, interval = "prediction")
+lines(sqft_above_seq,pred_interval[,2],col="green",lty=2)
+lines(sqft_above_seq,pred_interval[,3],col="green",lty=2)
+
+############################################################################
+## （参考）機械学習的アプローチ 学習データとテストデータに分割して精度検証
+############################################################################
+
+#学習データとテストデータに分割します
+train_idx<-sample(c(1:dim(house_data)[1]), size = dim(house_data)[1]*0.7)
+train <- house_data[train_idx, ]
+test <- house_data[-train_idx, ]
+
+mymodel<-lm(price ~ bedrooms + floors + waterfront + view + 
+                 condition + yr_built + yr_renovated + sqft_living15 + sqft_lot15, data=train)
+
+ypred<-predict(mymodel, newdata = test)
+mse<-sum((test$price - ypred)^2)/length(ypred)
+mse
+rmse<-sqrt(mse)
+rmse
