@@ -1,0 +1,136 @@
+---
+title: "Rによる統計学_基礎"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Wholesale_customers_data.csvについて
+卸売企業の以下の商品カテゴリ別年間取扱額のデータ。
+
+1. CHANNEL: 1 = ホテル・レストラン・カフェ / 2= スーパーなどの小売店
+2. REGION: 1 = Lisnon / 2= Oporto / 3 = Other
+3. FRESH: 生鮮食品
+4. MILK: 乳製品
+5. GROCERY: 食料品
+6. FROZEN:冷凍食品
+7. DETERGENTS_PAPER: 洗剤・紙製品
+8. DELICATESSEN: 惣菜
+
+#### Wholesale_customers_data.csvの読み込み
+Wholesale_customers_data.csvを読み込む。
+```{r}
+wh_data<-read.csv("data/Wholesale_customers_data.csv")
+```
+
+```{r echo=FALSE}
+head(wh_data)
+```
+#### (1) FRESHのヒストグラムを作成、平均、中央値、分散、標準偏差を求める。
+
+```{r}
+hist(wh_data$Fresh, main = "Histgram of Fresh")
+```
+
+```{r}
+# 平均
+mean(wh_data$Fresh)
+```
+```{r}
+# 中央値
+median(wh_data$Fresh)
+```
+```{r}
+# 分散
+var(wh_data$Fresh)
+```
+```{r}
+# 標準偏差
+sd(wh_data$Fresh)
+```
+
+#### （２）CHANNEL別にFRESHの平均、中央値、分散、標準偏差を求める。
+
+###### ホテル・レストラン・カフェのデータセット
+```{r}
+fresh_set_1 = subset(wh_data,Channel=="1")
+```
+
+```{r echo=FALSE}
+head(fresh_set_1)
+```
+```{r}
+# 平均
+mean(fresh_set_1$Fresh)
+```
+
+```{r}
+# 中央値
+median(fresh_set_1$Fresh)
+```
+
+```{r}
+# 分散
+var(fresh_set_1$Fresh)
+```
+
+```{r}
+# 標準偏差
+sd(fresh_set_1$Fresh)
+```
+
+###### スーパーなどの小売店のデータセット
+```{r}
+fresh_set_2 = subset(wh_data,Channel=="2")
+```
+
+```{r echo=FALSE}
+head(fresh_set_2)
+```
+
+```{r}
+# 平均
+mean(fresh_set_2$Fresh)
+```
+
+```{r}
+# 中央値
+median(fresh_set_2$Fresh)
+```
+
+```{r}
+# 分散
+var(fresh_set_2$Fresh)
+```
+
+```{r}
+# 標準偏差
+sd(fresh_set_2$Fresh)
+```
+
+#### (3) REGION別にMilkの箱ひげ図(boxplot)を描画
+
+[四分位数](https://bellcurve.jp/statistics/course/19277.html) 
+
+[箱ひげ](https://bellcurve.jp/statistics/course/19279.html) 
+
+```{r}
+region_1 = subset(wh_data,Region=="1")$Milk
+
+#抽出条件の最後にカンマ(,)がないとエラー
+region_2 = wh_data[wh_data$Region=="2",]$Milk 
+
+region_3 = subset(wh_data,Region=="3")$Milk
+
+plot_list = list(Lisnon=region_1 ,Oporto=region_2, Other=region_3)
+boxplot(plot_list)
+```
+
+#### (4) GROCERYとMILKの散布図を描画
+```{r}
+groceries = wh_data$Grocery
+milk = wh_data$Milk
+plot(groceries,milk, xlab="Grocery",ylab="Milk")
+
+```
+
