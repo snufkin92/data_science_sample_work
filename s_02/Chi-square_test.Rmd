@@ -1,0 +1,298 @@
+---
+title: "仮説検定"
+output:
+  html_document:
+    df_print: paged
+---
+
+#### 最尤推定
+>ケース1  
+小売店の常連客から「最近レジが混んでいる」というクレームを受けた。今のレジの体制では１時間に１６人以上になると待ち時間が長くなることは経験上分かっていた。そこで、３日間１時間に１６人以上来店する頻度はどのくらいあるのか調べ、下記の結果を得た。この問題は重要か？
+
+```{r}
+## 来店人数(3日分)
+num_customer_vector <- c(4,   7,  9, 11, 15, 7, 11, 11,
+                      11,  4, 10, 11, 14, 8, 12,  8,
+                      14, 14, 12,  6,  5, 8,  9,  9)
+
+num_customer_matrix <- matrix( num_customer_vector, ncol = 3)
+
+num_customer <- data.frame(num_customer_matrix)
+  
+library(DT)
+
+DT::datatable(
+  num_customer,
+  rownames = c("11:00-12:00", "12:00-13:00", "13:00-14:00", "14:00-15:00", 
+               "16:00-17:00", "17:00-18:00", "18:00-19:00", "19:00-20:00"),
+  colnames = c("day1", "day2", "day3"),
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+  )
+)
+
+```
+
+小売店という、ある空間内で一定時間内に来店というイベントが発生していると考えられるので、ポアソン分布と見なして良いか分布を確認
+```{r}
+# 確率分布(freq:Fは確率、xlim：X軸の幅)
+hist( num_customer_vector,  freq = F,  xlim = c(0, 20),  ylim = c(0, 0.2) )
+
+# histに追加
+par(new=T)
+
+#ポアソン分布を追加
+plot(
+  seq(0, 20, 1),
+  dpois(seq(0, 20, 1), lambda = 10),
+  type = "l",
+  col = "red",
+  xlim = c(0, 20),
+  ylim = c(0, 0.2),
+  xlab = "",
+  ylab = ""
+  )
+```
+
+最尤推定にて、ポアソン分布のパラメータλを推定
+__ポアソン分布__
+$$\begin{eqnarray*}
+P(X=k)= \displaystyle\frac{\lambda^{k}e^{-\lambda} }{k!} & (k=0,1,2, \cdots ) \\ \end{eqnarray*}$$
+__期待値__
+$$\begin{eqnarray*} 
+\lambda
+\end{eqnarray*}$$
+
+```{r}
+# 確率を掛け合わせる回数
+length(num_customer_vector)
+```
+
+```{r}
+# 尤度関数
+likelihood_function <- function(lambda) {
+
+  # 初期化
+  L <- 1
+  # 確率を掛け合わせる回数(24回)
+  m <- length(num_customer_vector)
+
+  for (i in 1:m) {
+    L <- L * dpois(num_customer_vector[i], lambda = lambda)
+  }
+
+  return(L)
+}
+```
+
+optimiseで尤度関数の最大値を計算し、パラメータを点推定（求めたいパラメータが複数の場合はoptim）
+```{r}
+# intervalはλを試す範囲
+optimise(likelihood_function,
+         interval = c(0, 30),
+         maximum = TRUE)
+```
+
+λ＝9.583339 の時、尤度関数は、最大値=2.508983e-27を取る。  
+尤度関数をプロットしてみる。
+```{r}
+# 来店人数が9または10人である場合の尤度
+paste(likelihood_function(9), likelihood_function(10))
+
+# 尤度関数の描画
+plot(
+  likelihood_function,
+  from = 0,
+  to = 15,
+  main = " maximum likelihood estimation",
+  xlab = "lambda",
+  ylab = "likelihood",
+  type = "b"
+)
+```
+
+```{r}
+# サンプル平均は最尤推定の結果と同じ
+mean(num_customer_vector)
+```
+
+```{r}
+# 16人以上来店する確率は? ( ppois(15) で15人まで来店する累積確率）
+1 - ppois(15, lambda = 9.583333)
+```
+__約3.5%の確率で16人以上来店する。__  
+
+#### t検定
+> ケース2  
+人事部のデータを分析した所、離職者は勤務時間が多いのではないかという推測するがあった。分析結果は偶然か？
+
+
+参考：t分布は自由度=30位で標準正規分布と同じとみなせる。
+```{r}
+```
+
+
+#### 1. 背景
+モバイルアプリ企業が、新しい広告によってクリック率が改善するかを確認するために、既存の広告をA案、新しい広告をB案とした、AB テストを企画している。
+
+##### (1) 以下の情報を使って、実験期間を定める為に必要なサンプルサイズを求めなさい。ただし検定手法はカイ二乗検定を予定しています。
+* 現在のクリック率は2%ですが、新しい事業サイドが求めるクリック率は1.3倍の 2.6%です。
+* 有意水準αは5%です。
+* 検出力は80%です。
+
+```{r}
+# 参照：http://abrahamcow.hatenablog.com/entry/2014/05/07/024305
+power.prop.test(p1 = 0.02
+                , p2 = 0.026
+                , sig.level = 0.05
+                , power = 0.8
+                , alternative = "one.sided")
+```
+
+
+__サンプルサイズ＝7717.189__
+
+##### (2) (1)の条件のうち、検出力を90%に変化させたとき、必要なサンプルサイズはいくつにな りますか。
+
+```{r}
+# 検出力を 80 -> 90% に修正
+power.prop.test(p1 = 0.02
+                , p2 = 0.026
+                , sig.level = 0.05
+                , power = 0.9
+                , alternative = "one.sided")
+```
+
+__サンプルサイズ＝10689.147__
+
+##### (3) 事業サイドは期待するクリック率の改善幅を、1.3倍ではなく、1.5倍だと言ってきまし た。これにより、サンプルサイズはいくつになりますか?
+
+```{r}
+# 検出力を p2を 0.02 * 1.5 -> 0.03 に修正
+power.prop.test(p1 = 0.02
+                , p2 = 0.03
+                , sig.level = 0.05
+                , power = 0.8
+                , alternative = "one.sided")
+```
+
+__サンプルサイズ＝3012.95__
+
+##### (4) 再び、事業サイドは期待するクリック率の改善幅を現在の1.1倍だと言ってきました。こ れにより、サンプルサイズはいくつになりますか?
+
+```{r}
+# 検出力を p2を 0.02 * 1.1 -> 0.022 に修正
+power.prop.test(p1=0.02
+                ,p2=0.022
+                ,sig.level = 0.05
+                ,power=0.8
+                ,alternative = "one.sided")
+```
+
+__サンプルサイズ＝63552.55__
+
+#### 2. paired test:対応のあるt検定
+10人の営業マンに対して、「売上倍増!営業トレーニング」を行った。トレーニング前後 で1ヶ月の売上を比較したところ以下のようになった。このトレーニングに効果があったのかを検証したい。(単位: 万円)
+```{r}
+before_sales <- c(120, 118, 125, 131, 112, 108, 111, 121, 116, 109)
+after_sales <- c(118, 117, 118, 122, 109, 108, 109, 115, 112, 108)
+```
+
+```{r echo = FALSE}
+sales_man <-  c("Salse-A",  "Salse-B",  "Salse-C",  "Salse-D",  "Salse-E",  
+                "Salse-F",  "Salse-G",  "Salse-H",  "Salse-I",  "Salse-J")
+  
+sales <- matrix(c(before_sales, after_sales), nrow = 2)
+  
+df <- data.frame(sales)
+  
+library(DT)
+
+DT::datatable(
+  df,
+  rownames = c("before", "after"),
+  colnames = c("Sales man", sales_man),
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+  )
+)
+```
+
+上記のデータを用いて、対応のあるt検定(paired t検定)を行いなさい。
+
+```{r}
+# トレーニング前の売上平均
+paste("Average sales before training:", mean(before_sales))
+
+# トレーニング後の売上平均
+paste("Average sales after training:", mean(after_sales))
+```
+
+帰無仮説：トレーニング効果なし  
+対立仮説：トレーニング効果あり(売上増加効果あり)
+
+```{r}
+# 対応のあるt検定(after_sales = before_sales, paired=TRUE)
+t.test(after_sales
+       ,before_sales
+       ,alternative = "greater"
+       ,paired=TRUE
+       ,var.equal = FALSE)
+```
+__p-value = 0.9977__
+の為、トレーニング効果があったとは言えない。
+
+
+### 3. F test:F検定 等母分散検定-(分散が等しくない場合はwelchのt検定)
+2つのハンバーガーチェン店A,Bで売られているハンバーガーの重さ( 単位:g )を測ったところ以下のようなデータが得られた。
+
+```{r}
+shop_a <- c(121, 125, 119, 118, 126, 110, 120)
+shop_b <- c(123, 119, 121, 114, 127, 113, 118)
+```
+
+```{r echo = FALSE}
+gram <- matrix(c(shop_a, shop_b), nrow = 2)
+df <- data.frame((gram))
+
+library(DT)
+
+DT::datatable(
+  df,
+  rownames = c("Shop-A", "Shop-B"),
+  colnames = NULL,
+  class = "stripe cell-border",
+  options = list(
+    autoWidth = TRUE,
+    dom = 't',
+    ordering = F
+  ),
+)
+```
+
+このとき、二つのハンバーガチェーン店A,Bで売られているハンバーガーの重さの分散に違いがあるといえるか検定しなさい。
+
+```{r}
+# A店の標本分散
+paste("Sample variance Shop-A", var(shop_a))
+
+# B店の標本分散
+paste("Sample variance Shop-B", var(shop_b))
+```
+
+帰無仮説：母分散に違いなし  
+対立仮説：母分散に違いあり
+
+```{r}
+# F検定
+var.test(shop_a,shop_b, alternative = "two.sided")
+```
+
+__p-value = 0.8717__
+の為、両店舗のハンバーガーの重さの分散に違いがあるとは言えない。
