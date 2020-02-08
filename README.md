@@ -15,3 +15,9 @@ Kaggle等のオープンデータを使用して、擬似的なビジネス課�
 
 ## 最尤推定
 [最尤推定による確率分布のパラメータ推定](https://nbviewer.jupyter.org/github/snufkin92/data_science_sample_work/blob/dev/s_01/maximum_likelihood_estimation.nb.html)
+
+## 分類におけるビジネス評価基準
+[ 2クラス分類](https://github.com/snufkin92/data_science_sample_work/blob/dev/ml_01/business_metric_binary_classification.ipynb)
+
+## 特徴量選択
+[特徴量選択](https://github.com/snufkin92/data_science_sample_work/blob/dev/ml_01/feature_selection.ipynb)
